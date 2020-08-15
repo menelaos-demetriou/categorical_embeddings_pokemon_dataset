@@ -4,7 +4,7 @@ This repo covers some key concepts from applying neural networks to tabular data
 There are few ways to convert categorical data but in the situation that an attribute has a lot of unique values or allow for relationships between categories to be captured.   
 Dataset was taken from https://www.kaggle.com/abcsds/pokemon/data#  
 
-# To-do:
+# Further improvements:
 
 
 # Requirements
