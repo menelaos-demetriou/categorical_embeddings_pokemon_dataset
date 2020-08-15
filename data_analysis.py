@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -23,7 +24,18 @@ def dist_plot(p_type, pokemon):
     plt.title("%s distribution" % p_type)
     figure = plt.gcf()  # get current figure
     figure.set_size_inches(15, 6)
-    plt.savefig("plots/dist_%s.png" % p_type, dpi=100)
+    # plt.savefig("plots/dist_%s.png" % p_type, dpi=100)
+    plt.show()
+
+
+def dist_plot_legendaries(p_type, pokemon):
+    pokemon = pokemon[pokemon["Legendary"] == True]
+    sns.catplot(x=p_type, kind="count", data=pokemon)
+    plt.title("%s distribution" % p_type)
+    plt.xticks(rotation='vertical')
+    figure = plt.gcf()  # get current figure
+    figure.set_size_inches(15, 10)
+    plt.savefig("plots/dist_legendaries.png", dpi=100)
     plt.show()
 
 
@@ -47,7 +59,9 @@ def main():
     # Plot distribution of Type 2
     dist_plot("Type 2", pokemon)
 
-    print("Hello")
+    # Plot Type 1 and Type 2 distributions
+    pokemon["combined"] = pokemon["Type 1"] + "-" + pokemon["Type 2"]
+    dist_plot_legendaries("combined", pokemon)
 
 
 if __name__ == "__main__":
