@@ -6,6 +6,7 @@ import pandas as pd
 import keras
 from keras.models import Model
 from keras.utils.vis_utils import plot_model
+from ann_visualizer.visualize import ann_viz
 from keras.layers import Dense, Embedding, Flatten, concatenate, Input
 
 from sklearn.metrics import roc_curve
@@ -137,11 +138,11 @@ def plot_cm(labels, predictions, p=0.5):
     plt.savefig("plots/confusion_matrix_plot.png")
     plt.clf()
 
-    print('Legitimate Transactions Detected (True Negatives): ', cm[0][0])
-    print('Legitimate Transactions Incorrectly Detected (False Positives): ', cm[0][1])
-    print('Fraudulent Transactions Missed (False Negatives): ', cm[1][0])
-    print('Fraudulent Transactions Detected (True Positives): ', cm[1][1])
-    print('Total Fraudulent Transactions: ', np.sum(cm[1]))
+    print('True Negatives: ', cm[0][0])
+    print('False Positives: ', cm[0][1])
+    print('False Negatives: ', cm[1][0])
+    print('True Positives: ', cm[1][1])
+    print('Total: ', np.sum(cm[1]))
 
 
 def main():
@@ -192,6 +193,7 @@ def main():
     # Get summary
     model.summary()
     plot_model(model, to_file='plots/model_plot.png', show_shapes=True, show_layer_names=True)
+    # ann_viz(model, filename="plots/neural_network.png", title="NN Architecture")
 
     # Get class weights
     neg, pos = np.bincount(pokemon["Legendary"])
@@ -204,7 +206,7 @@ def main():
     xval = [X_val[["Type 1", "Type 2"]], X_val["Gen"], X_val[NUM_ATTRIB]]
     # Train model
     training_history = model.fit(x=[X_train[["Type 1", "Type 2"]], X_train["Gen"], X_train[NUM_ATTRIB]],
-                                 y=y_train, epochs=1000, batch_size=32, callbacks=[early_stopping, cp_callback],
+                                 y=y_train, epochs=10000, batch_size=32, callbacks=[early_stopping, cp_callback],
                                  validation_data=(xval, y_val), class_weight=class_weight)
 
     # Plot loss
