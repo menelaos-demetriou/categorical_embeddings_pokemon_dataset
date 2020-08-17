@@ -238,6 +238,10 @@ def main():
     plt.legend(loc='lower right')
     plt.savefig("plots/roc_plot.png")
 
+    # Get embeddings
+    layer_type = model.get_layer('embedding-type')
+    output_embeddings_type = layer_type.get_weights()
+
 
 if __name__ == "__main__":
     main()
