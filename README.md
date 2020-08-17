@@ -5,6 +5,7 @@ There are few ways to convert categorical data but in the situation that an attr
 Dataset was taken from https://www.kaggle.com/abcsds/pokemon/data#  
 
 # Further improvements:
+Add support for embedding visualisations.  
 
 
 # Requirements
