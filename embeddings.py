@@ -4,7 +4,9 @@ import numpy as np
 import pandas as pd
 
 import keras
+import tensorflow as tf
 from keras.models import Model
+from tensorboard.plugins import projector
 from keras.utils.vis_utils import plot_model
 from ann_visualizer.visualize import ann_viz
 from keras.layers import Dense, Embedding, Flatten, concatenate, Input
@@ -31,31 +33,30 @@ def process_data(pokemon):
     # Convert True/False to binary
     pokemon["Legendary"] = pokemon["Legendary"].astype(int)
 
-    columns = ["Type 1", "Type 2", "Gen"] + NUM_ATTRIB + ["Legendary"]
+    columns = ["combined_type", "Gen"] + NUM_ATTRIB + ["Legendary"]
     df = pd.DataFrame(columns=columns)
-
-    types = pokemon["Type 2"].unique()
+    pokemon["combined_type"] = pokemon["Type 1"] + "-" + pokemon["Type 2"]
+    types = pokemon["combined_type"].unique()
     type_dict = dict(zip(types, range(len(types))))
     pokemon = pokemon.replace(type_dict)
 
-    df["Type 1"] = pokemon["Type 1"]
-    df["Type 2"] = pokemon["Type 2"]
+    df["combined_type"] = pokemon["combined_type"]
     pokemon['Generation'] = pokemon['Generation'] - 1
     pokemon['Generation'] = pokemon['Generation'].astype(int)
     df["Gen"] = pokemon["Generation"]
     df[NUM_ATTRIB] = data_transformed
     df["Legendary"] = pokemon["Legendary"].astype("int32")
 
-    return df
+    return df, type_dict
 
 
 def create_model(metrics, embedding_size):
     # create model
-    input_type = Input(shape=(2,))
+    input_type = Input(shape=(1,))
     input_gen = Input(shape=(1,))
     input_stats = Input(shape=(7,))
 
-    embedding_type = Embedding(input_dim=19, output_dim=embedding_size, input_length=2,
+    embedding_type = Embedding(input_dim=154, output_dim=embedding_size, input_length=1,
                                name="embedding-type")(input_type)
     embedding_gen = Embedding(input_dim=6, output_dim=embedding_size, input_length=1, name="embedding-gen")(input_gen)
 
@@ -145,12 +146,98 @@ def plot_cm(labels, predictions, p=0.5):
     print('Total: ', np.sum(cm[1]))
 
 
+def plot_embbedings(model, lookup_dict, embedd):
+    if embedd == "type":
+        column_string = "combined_type"
+    else:
+        column_string = "Gen"
+    layer_type = model.get_layer('embedding-%s' % embedd)
+    output_embeddings_type = layer_type.get_weights()
+    output_embeddings_type_df = pd.DataFrame(output_embeddings_type[0])
+    output_embeddings_type_df = output_embeddings_type_df.reset_index()
+    output_embeddings_type_df.columns = [column_string, 'embedding_1', 'embedding_2', 'embedding_3']
+    m = output_embeddings_type_df.iloc[:, 1:].values
+    labels = output_embeddings_type_df.iloc[:, 0:1].values
+    if embedd == "type":
+        def get_key(val):
+            for key, value in lookup_dict.items():
+                if val == value:
+                    return key
+
+        labels = [get_key(label) for label in labels]
+    else:
+        labels += 1
+        labels = [y for x in labels for y in x]
+
+    fig = plt.figure(figsize=(20, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    for i in range(len(labels)):
+        ax.scatter(m[i, 0], m[i, 1], m[i, 2], color='b')
+        ax.text(m[i, 0], m[i, 1], m[i, 2], '%s' % (labels[i]), size=20, zorder=1, color='k')
+
+    ax.set_xlabel('Embedding 1')
+    ax.set_ylabel('Embedding 2')
+    ax.set_zlabel('Embedding 3')
+    plt.savefig("plots/3d_plot_embedding_%s.png" % embedd)
+    plt.show()
+
+
+def embedding_tensorboard(model, lookup_dict, embedd):
+    # Set up a logs directory, so Tensorboard knows where to look for files
+    log_dir = 'logs/%s' % embedd
+    if not os.path.exists(log_dir):
+        os.mkdir(log_dir)
+
+    if embedd == "type":
+        column_string = "combined_type"
+    else:
+        column_string = "Gen"
+    layer_type = model.get_layer('embedding-%s' % embedd)
+    output_embeddings_type = layer_type.get_weights()
+    output_embeddings_type_df = pd.DataFrame(output_embeddings_type[0])
+    output_embeddings_type_df = output_embeddings_type_df.reset_index()
+    output_embeddings_type_df.columns = [column_string, 'embedding_1', 'embedding_2', 'embedding_3']
+    m = output_embeddings_type_df.iloc[:, 1:].values
+    labels = output_embeddings_type_df.iloc[:, 0:1].values
+    if embedd == "type":
+        def get_key(val):
+            for key, value in lookup_dict.items():
+                if val == value:
+                    return key
+
+        labels = [get_key(label) for label in labels]
+    else:
+        labels += 1
+        labels = [y for x in labels for y in x]
+
+    # Save Labels separately on a line-by-line manner.
+    with open(os.path.join(log_dir, 'metadata.tsv'), "w") as f:
+        for label in labels:
+            f.write("{}\n".format(label))
+
+    weights = tf.Variable(model.get_layer("embedding-%s" % embedd).get_weights()[0][0:])
+    # Create a checkpoint from embedding, the filename and key are
+    # name of the tensor.
+    checkpoint = tf.train.Checkpoint(embedding=weights)
+    checkpoint.save(os.path.join(log_dir, "embedding.ckpt"))
+
+    # Set up config
+    config = projector.ProjectorConfig()
+    embedding = config.embeddings.add()
+    # The name of the tensor will be suffixed by `/.ATTRIBUTES/VARIABLE_VALUE`
+    embedding.tensor_name = "embedding/.ATTRIBUTES/VARIABLE_VALUE"
+    embedding.metadata_path = 'metadata.tsv'
+    projector.visualize_embeddings(log_dir, config)
+
+
 def main():
     # Read csv file
+    lookup_dict = {}
     pokemon = pd.read_csv("data/pokemon.csv")
     pokemon["Type 2"] = pokemon["Type 2"].fillna("no_type")
 
-    processed = process_data(pokemon)
+    processed, lookup_dict = process_data(pokemon)
 
     x = processed.loc[:, ~processed.columns.isin(['Legendary'])].copy()
     y = processed["Legendary"].copy()
@@ -203,9 +290,9 @@ def main():
 
     class_weight = {0: weight_for_0, 1: weight_for_1}
 
-    xval = [X_val[["Type 1", "Type 2"]], X_val["Gen"], X_val[NUM_ATTRIB]]
+    xval = [X_val[["combined_type"]], X_val["Gen"], X_val[NUM_ATTRIB]]
     # Train model
-    training_history = model.fit(x=[X_train[["Type 1", "Type 2"]], X_train["Gen"], X_train[NUM_ATTRIB]],
+    training_history = model.fit(x=[X_train[["combined_type"]], X_train["Gen"], X_train[NUM_ATTRIB]],
                                  y=y_train, epochs=10000, batch_size=32, callbacks=[early_stopping, cp_callback],
                                  validation_data=(xval, y_val), class_weight=class_weight)
 
@@ -216,13 +303,13 @@ def main():
     plot_metrics(training_history)
 
     # Perform evaluations on test set
-    train_predictions_baseline = model.predict(x=[X_train[["Type 1", "Type 2"]], X_train["Gen"], X_train[NUM_ATTRIB]],
+    train_predictions_baseline = model.predict(x=[X_train[["combined_type"]], X_train["Gen"], X_train[NUM_ATTRIB]],
                                                batch_size=4)
-    test_predictions_baseline = model.predict(x=[X_test[["Type 1", "Type 2"]], X_test["Gen"], X_test[NUM_ATTRIB]],
+    test_predictions_baseline = model.predict(x=[X_test[["combined_type"]], X_test["Gen"], X_test[NUM_ATTRIB]],
                                               batch_size=4)
 
     # Evaluate test set
-    baseline_results = model.evaluate(x=[X_test[["Type 1", "Type 2"]], X_test["Gen"], X_test[NUM_ATTRIB]], y=y_test,
+    baseline_results = model.evaluate(x=[X_test[["combined_type"]], X_test["Gen"], X_test[NUM_ATTRIB]], y=y_test,
                                       batch_size=4, verbose=0)
 
     # Get metrics
@@ -239,8 +326,12 @@ def main():
     plt.savefig("plots/roc_plot.png")
 
     # Get embeddings
-    layer_type = model.get_layer('embedding-type')
-    output_embeddings_type = layer_type.get_weights()
+    plot_embbedings(model, lookup_dict, "type")
+    plot_embbedings(model, lookup_dict, "gen")
+
+    # Get embeddings using Tensorboard
+    embedding_tensorboard(model, lookup_dict, "type")
+    embedding_tensorboard(model, lookup_dict, "gen")
 
 
 if __name__ == "__main__":
