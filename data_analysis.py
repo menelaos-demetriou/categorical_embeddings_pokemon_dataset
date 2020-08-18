@@ -7,7 +7,7 @@ plt.style.use('ggplot')
 
 def pie_plot(data):
     labels = 'No Legendary', 'Legendary'
-    explode = (0.2, 0)  # only "explode" the 2nd slice (i.e. 'Hogs')
+    explode = (0.2, 0) 
 
     fig1, ax1 = plt.subplots()
     ax1.pie(data.value_counts(normalize=True), explode=explode, labels=labels, autopct='%1.1f%%',
